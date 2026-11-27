@@ -8,6 +8,7 @@ import { createRequire } from "node:module";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { checkCore } from "./core-check.mjs";
 import { checkTransfer } from "./transfer-check.mjs";
 import { checkSwStall } from "./sw-check.mjs";
 import { checkDepth } from "./depth-check.mjs";
@@ -561,6 +562,10 @@ try {
   await q.close(); }
 { const used = new Set(G.KINDS.flatMap((k) => [0, 1, 2, 3, 4].map((s) => G.make(`${k.id}|u${s}`).grp)));
   check("2段目「どんな抜け道？」：どの種類も4つの形のどれか", used.size === 4 && [...used].every((g) => G.GROUPS[g]), [...used].join()); }
+// game-core（shared-workflows template/qa/core-check.mjs）：遊び方・感想のリンク・不具合の帯（CodeRabbit nukemichi-fusagi#1）
+try {
+  await checkCore({ browser, url, check, first: false }); // はじめての案内はゲームの firstClose が閉じるので、遊び方・感想・不具合の帯だけ見る
+} catch (e) { check("game-core の検査が最後まで動く", false, e.message.split("\n")[0]); }
 // 引き継ぎコード（shared-workflows template/qa/transfer-check.mjs）
 try {
   const sample = { "nmf-v1": JSON.stringify({ v: 1, tut: true, days: { "2026-11-13": { m: [0, 1, 0, 0, 2], k: ["room0", "garden0", "carry1", "boat1", "room2"] } }, hdays: {}, adays: {}, dex: { room0: 1, garden0: 1, carry1: 1, boat1: 1, room2: 1 }, runs: {}, kofi: {}, ach: {}, ebest: 7, t: 1 }), "nmf-fs": "3", "nmf-depth": JSON.stringify({ v: 1, rv: { "room1|x1": { s: 1, due: "2026-11-20", t: 5 } } }) }; // 復習の記録も引き継ぐかを見る（CodeRabbit shindo-yomi#1）
