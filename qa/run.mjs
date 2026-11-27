@@ -157,7 +157,10 @@ await new Promise((r) => server.once("listening", r));
 const url = `http://127.0.0.1:${server.address().port}/`;
 const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 const errors = [];
-const TODAY = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+// ブラウザの時計を、検査を始めた日の日本時間の正午に合わせる（検査の途中で日本時間の0時をまたいでも、ブラウザの出題日と TODAY がずれない。
+// 日付が変わる場面を見る検査だけ、さらに時計を進める。nukemichi-fusagi #1 の CodeRabbit）
+const TODAY = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10), CLOCK = Date.parse(TODAY + "T03:00:00Z") - Date.now();
+{ const nc = browser.newContext.bind(browser); browser.newContext = async (o) => { const c = await nc(o); await c.addInitScript((off) => { const n = Date.now; Date.now = () => n() + off; }, CLOCK); return c; }; }
 const dayBefore = (n) => new Date(Date.parse(TODAY) - n * 864e5).toISOString().slice(0, 10);
 async function newPage(w = 390, ctx) {
   const c = ctx || await browser.newContext({ viewport: { width: w, height: 800 } });
@@ -336,7 +339,7 @@ try {
 
   // カレンダー・あとから：過去の日の記録を置いて見る。第1回から日がたっていなくても見られるよう、時計を10日進める
   {
-    const SHIFT = 10 * 864e5, TODAY = new Date(Date.now() + 9 * 3600e3 + SHIFT).toISOString().slice(0, 10), dayBefore = (n) => new Date(Date.parse(TODAY) - n * 864e5).toISOString().slice(0, 10);
+    const SHIFT = 10 * 864e5, TODAY = new Date(Date.now() + CLOCK + 9 * 3600e3 + SHIFT).toISOString().slice(0, 10), dayBefore = (n) => new Date(Date.parse(TODAY) - n * 864e5).toISOString().slice(0, 10);
     const cx = await browser.newContext({ viewport: { width: 390, height: 800 } });
     await cx.addInitScript((sh) => { const o = Date.now; Date.now = () => o() + sh; }, SHIFT);
     const q = await newPage(390, cx);
@@ -345,7 +348,7 @@ try {
     check("ホームの「続けて」は、きのうを休んだら — （休んだ日を責めない）", (await q.textContent(".stats")).includes("—"));
     await q.click("#go-cal");
     const lateList = await q.evaluate(() => __nm.lateDays(__nm.load()));
-    const exp = [1, 4, 5, 6, 7].map(dayBefore).filter((d) => d >= "2026-11-07");
+    const EPOCH = await q.evaluate(() => __nm.EPOCH), exp = [1, 4, 5, 6, 7].map(dayBefore).filter((d) => d >= EPOCH); // 第1回（ゲームの EPOCH）より前の日は出ない
     check("カレンダー：取りこぼした過去7日（第1回より後）を押せる", JSON.stringify(lateList) === JSON.stringify(exp), lateList.join(","));
     check("カレンダー：遊んだ日は★の数の文字も付く", (await q.locator(".cal .c.p3").count()) + (await q.locator(".cal .c.p2").count()) + (await q.locator(".cal .c.p1").count()) >= (dayBefore(3).slice(0, 7) === TODAY.slice(0, 7) ? 2 : 0));
     if (lateList.length) {
@@ -562,6 +565,23 @@ try {
   await q.close(); }
 { const used = new Set(G.KINDS.flatMap((k) => [0, 1, 2, 3, 4].map((s) => G.make(`${k.id}|u${s}`).grp)));
   check("2段目「どんな抜け道？」：どの種類も4つの形のどれか", used.size === 4 && [...used].every((g) => G.GROUPS[g]), [...used].join()); }
+// nukemichi-fusagi #1 の CodeRabbit：感想リンクのはじめの href・「進む」で画面が戻る・別タブで2段目へ進んだときのヒント
+{ const q = await newPage(); await closeHow(q);
+  const fh = await q.getAttribute("footer a[data-feedback]", "href");
+  check("フッターの「感想を送る」は、押す前から共通フォームを指す（メニューから新しいタブで開いても GitHub へ行かない）", !!fh && !/github\.com/.test(fh) && /usp=pp_url/.test(fh), fh);
+  await q.click("#go-cal"); await q.waitForSelector(".cal"); await q.goBack(); await q.waitForTimeout(200);
+  const backHome = await q.locator("#go-cal").count() === 1;
+  await q.goForward(); await q.waitForTimeout(200);
+  check("カレンダーから「戻る」でホーム、「進む」でカレンダーに戻る（# だけ変わってホームのまま、にならない）", backHome && await q.locator(".cal").count() === 1 && (await q.evaluate(() => location.hash)) === "#cal", await q.evaluate(() => location.hash));
+  await q.evaluate(() => __nm.home()); await q.click("#go-d"); await q.waitForSelector("#card"); await q.waitForTimeout(100);
+  // 別のタブで正解して2段目へ進んだ（保存だけ2段目にする）。このタブはまだ1段目のまま、ヒントを押す
+  await q.evaluate(() => { const c = __nm.cur(); __nm.save((s) => { const r = s.runs[__nm.mode()]; r.cur = { i: c.i, tag: c.tag, wrong: [], hints: 0, step: 2, w2: [], h2: 0 }; }); });
+  await q.click("#hint"); await q.waitForSelector(".why button", { timeout: 2000 }).catch(() => {});
+  const hs = await q.evaluate(() => { const c = __nm.cur(); return { hints: c.hints, step: c.step, saved: __nm.load().runs[__nm.mode()].cur.hints }; });
+  check("別のタブで2段目へ進んだあと1段目のヒントを押すと、ヒントを数えずに2段目を出す", hs.hints === 0 && hs.saved === 0 && hs.step === 2 && await q.locator(".why button").count() === 4, JSON.stringify(hs));
+  await q.click("#hint"); await q.waitForTimeout(100);
+  check("そのあと2段目でヒントを押すと、2段目のヒント（形を1つ消す）として数える", await q.evaluate(() => { const c = __nm.cur(); return c.hints === 1 && c.h2 === 1; }));
+  await q.close(); }
 // game-core（shared-workflows template/qa/core-check.mjs）：遊び方・感想のリンク・不具合の帯（CodeRabbit nukemichi-fusagi#1）
 try {
   await checkCore({ browser, url, check, first: false }); // はじめての案内はゲームの firstClose が閉じるので、遊び方・感想・不具合の帯だけ見る

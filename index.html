@@ -1481,7 +1481,8 @@ footer [data-kiroku-open]{min-height:44px;min-width:44px;display:inline-flex;ali
 "use strict";
 const $ = (id) => document.getElementById(id), app = $("app");
 const SITE = "https://satou-aaaaa.github.io/nukemichi-fusagi/";
-const FEEDBACK = "https://github.com/satou-aaaaa/nukemichi-fusagi/issues/new?template=feedback.yml";
+// 感想のリンクは、はじめから共通フォームを指す（メニューから新しいタブで開いて、押したときの書き換えを通らなくてもフォームへ。nukemichi-fusagi #1 の CodeRabbit）
+const FEEDBACK = Core.feedbackUrl({ kind: "fun" });
 if (window.Core) Core.bindFeedback({}); // 「感想を送る」は全ゲームで1つの Googleフォームへ（ゲーム名・版などを事前入力。GitHub のアカウントが無くても送れる）
 const KEY = "nmf-v1", FSKEY = "nmf-fs", EPOCH = "2026-11-27";
 const G = window.NMF, LV = G.LV;
@@ -1655,7 +1656,8 @@ $("howto").addEventListener("close", () => { if (!load().tut) save((s) => { s.tu
 $("howto-ok").onclick = () => { save((s) => { s.tut = true; }); const d = $("howto"); d.close ? d.close() : d.removeAttribute("open"); }; // 押したらすぐ残す
 
 function home() {
-  Core.screens.route({}, home); Core.screens.mark(""); // 「戻る」でホームへ（sync-template の migrateBack）
+  // 「戻る」でホームへ。「進む」で戻ってきたとき描き直せる画面（途中の回・結果のように、そのときの状態が要る画面は入れない）を登録する（nukemichi-fusagi #1 の CodeRabbit）
+  Core.screens.route({ practiceMenu: () => practiceMenu(), book: () => book(), achView: () => achView(), cal: () => cal(), about: () => about() }, home); Core.screens.mark("");
   const s = load(), k = todayKey(), done = s.days[k], hdone = s.hdays[k];
   // 最後の1問を解いて結果を見る前に閉じた回は、開き直したら結果へ進める（記録をつける）
   for (const m of Object.keys(s.runs)) { const r = s.runs[m]; if (m !== "p" && m !== "e" && r && doneOf(r)) { MODE = m; return finish(); } }
@@ -1843,7 +1845,11 @@ function paint() {
   const h = $("hint"); if (h) h.disabled = cur.done || cur.hints >= 2;
   $("hintbox").innerHTML = cur.hints && !cur.done && cur.step !== 2 ? `<div class="hint" role="status">💡 ${esc(cur.P.look)}${cur.hints >= 2 ? `<br>💡 ${esc(cur.P.key)}` : ""}</div>` : "";
 }
-function hint() { if (cur.done || cur.hints >= 2) return; if (cur.step === 2) { if (cur.h2 || !left2Of().length) return; cur.h2 = 1; cur.hints++; keep(); return paintWhy(); } cur.hints++; keep(); paint(); }
+function hint() {
+  if (cur.done || cur.hints >= 2) return;
+  // 別のタブで2段目へ進んでいたら、ヒントを使わずに2段目を描き直す（1段目のヒントを数えてしまわない。nukemichi-fusagi #1 の CodeRabbit）
+  if (cur.step !== 2) { const r = load().runs[MODE], w = same(r) && r.cur && r.cur.i === cur.i && r.cur.tag === cur.tag ? r.cur : null; if (w && w.step === 2) return keep(); }
+  if (cur.step === 2) { if (cur.h2 || !left2Of().length) return; cur.h2 = 1; cur.hints++; keep(); return paintWhy(); } cur.hints++; keep(); paint(); }
 // 2段目：正解したら「この命令だと、ロボはどんな抜け道を使った？」を4つの形から選ぶ（game-dev.md「1問を深くする」）
 const GK = Object.keys(G.GROUPS);
 // 2段目のヒント：ちがう形を1つ消す（消すのは決まった1つ。まちがいの数で変えない）
