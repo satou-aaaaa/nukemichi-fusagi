@@ -566,7 +566,7 @@ try {
 { const used = new Set(G.KINDS.flatMap((k) => [0, 1, 2, 3, 4].map((s) => G.make(`${k.id}|u${s}`).grp)));
   check("2段目「どんな抜け道？」：どの種類も4つの形のどれか", used.size === 4 && [...used].every((g) => G.GROUPS[g]), [...used].join()); }
 // nukemichi-fusagi #1 の CodeRabbit：感想リンクのはじめの href・「進む」で画面が戻る・別タブで2段目へ進んだときのヒント
-{ const q = await newPage(); await closeHow(q);
+{ let q = null; try { q = await newPage(); await closeHow(q); // 止まっても結果を残し、後の検査へ進む（nukemichi-fusagi #1 の CodeRabbit）
   const fh = await q.getAttribute("footer a[data-feedback]", "href");
   check("フッターの「感想を送る」は、押す前から共通フォームを指す（メニューから新しいタブで開いても GitHub へ行かない）", !!fh && !/github\.com/.test(fh) && /usp=pp_url/.test(fh), fh);
   await q.click("#go-cal"); await q.waitForSelector(".cal"); await q.goBack(); await q.waitForTimeout(200);
@@ -581,7 +581,7 @@ try {
   check("別のタブで2段目へ進んだあと1段目のヒントを押すと、ヒントを数えずに2段目を出す", hs.hints === 0 && hs.saved === 0 && hs.step === 2 && await q.locator(".why button").count() === 4, JSON.stringify(hs));
   await q.click("#hint"); await q.waitForTimeout(100);
   check("そのあと2段目でヒントを押すと、2段目のヒント（形を1つ消す）として数える", await q.evaluate(() => { const c = __nm.cur(); return c.hints === 1 && c.h2 === 1; }));
-  await q.close(); }
+} catch (e) { check("感想リンク・「進む」・別タブのヒントの検査が最後まで動く", false, e.message.split("\n")[0]); } finally { if (q) await q.context().close().catch(() => {}); } }
 // game-core（shared-workflows template/qa/core-check.mjs）：遊び方・感想のリンク・不具合の帯（CodeRabbit nukemichi-fusagi#1）
 try {
   await checkCore({ browser, url, check, first: false }); // はじめての案内はゲームの firstClose が閉じるので、遊び方・感想・不具合の帯だけ見る
